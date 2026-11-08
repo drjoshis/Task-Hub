@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Multi-Portfolio Task Manager with Cloud Sync</title>
+  <title>Multi-Portfolio Task Manager (UTC & Multi-Timezone)</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -25,6 +25,17 @@
 
     const DEFAULT_PORTFOLIOS = ["CTD", "WHO", "WMA JDN"];
 
+    // Supported Time Zones
+    const TIMEZONES = [
+      { id: "UTC", label: "UTC (Coordinated Universal Time)", zone: "UTC" },
+      { id: "Delhi", label: "Delhi, India (IST)", zone: "Asia/Kolkata" },
+      { id: "Trinidad", label: "Trinidad and Tobago (AST)", zone: "America/Port_of_Spain" },
+      { id: "Paris", label: "Paris, France (CET/CEST)", zone: "Europe/Paris" },
+      { id: "London", label: "London, UK (GMT/BST)", zone: "Europe/London" },
+      { id: "Australia", label: "Australia (Sydney / AEDT)", zone: "Australia/Sydney" },
+      { id: "Peru", label: "Peru (PET)", zone: "America/Lima" }
+    ];
+
     const Icons = {
       FolderPlus: () => <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>,
       Plus: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>,
@@ -40,7 +51,8 @@
       Settings: () => <svg className="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
       Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>,
       Edit: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>,
-      X: () => <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      X: () => <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>,
+      Globe: () => <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
     };
 
     function TaskManagerApp() {
@@ -59,6 +71,7 @@
         return saved ? JSON.parse(saved) : null;
       });
 
+      const [selectedZone, setSelectedZone] = useState("UTC");
       const [isSyncing, setIsSyncing] = useState(false);
       const [syncStatus, setSyncStatus] = useState("local");
       const [showFirebaseModal, setShowFirebaseModal] = useState(false);
@@ -146,6 +159,46 @@
         }
       }, [tasks, portfolios]);
 
+      // Timezone Conversion Helper
+      const formatDeadline = (utcIsoString, zoneKey = selectedZone) => {
+        if (!utcIsoString) return "";
+        try {
+          const tzObj = TIMEZONES.find(t => t.id === zoneKey) || TIMEZONES[0];
+          const date = new Date(utcIsoString);
+          if (isNaN(date.getTime())) return utcIsoString; // fallback for legacy YYYY-MM-DD
+
+          return new Intl.DateTimeFormat("en-US", {
+            timeZone: tzObj.zone,
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+          }).format(date);
+        } catch (e) {
+          return utcIsoString;
+        }
+      };
+
+      // Converts input HTML datetime-local value (assumed UTC) into UTC ISO format
+      const isoFromPicker = (localPickerVal) => {
+        if (!localPickerVal) return "";
+        return new Date(localPickerVal + "Z").toISOString();
+      };
+
+      // Converts UTC ISO string back into HTML datetime-local input string
+      const pickerFromIso = (isoStr) => {
+        if (!isoStr) return "";
+        try {
+          const d = new Date(isoStr);
+          if (isNaN(d.getTime())) return isoStr;
+          return d.toISOString().slice(0, 16);
+        } catch (e) {
+          return "";
+        }
+      };
+
       // Portfolio Actions
       const handleAddPortfolio = () => {
         const trimmed = newPortfolioName.trim();
@@ -159,7 +212,7 @@
         e.stopPropagation();
         const assignedTasks = tasks.filter(t => t.portfolio === portfolioToDelete);
         if (assignedTasks.length > 0) {
-          alert(`Cannot delete portfolio "${portfolioToDelete}" because ${assignedTasks.length} task(s) are assigned to it. Please reassign or delete those tasks first.`);
+          alert(`Cannot delete portfolio "${portfolioToDelete}" because ${assignedTasks.length} task(s) are assigned to it.`);
           return;
         }
         if (confirm(`Are you sure you want to delete portfolio "${portfolioToDelete}"?`)) {
@@ -251,30 +304,19 @@
       const activeTasks = useMemo(() => filteredTasks.filter(t => t.status !== "Completed"), [filteredTasks]);
       const archivedTasks = useMemo(() => filteredTasks.filter(t => t.status === "Completed"), [filteredTasks]);
 
-      // Accurate Local Midnight Date Parsing
-      const parseLocalDate = (dateStr) => {
-        if (!dateStr) return null;
-        const parts = dateStr.split('-');
-        if (parts.length !== 3) return null;
-        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      // Overdue/Time calculations in UTC
+      const isOverdue = (utcIsoString) => {
+        if (!utcIsoString) return false;
+        const d = new Date(utcIsoString);
+        return d < new Date();
       };
 
-      const isOverdue = (dateStr) => {
-        const d = parseLocalDate(dateStr);
-        if (!d) return false;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return d < today;
-      };
-
-      const isWithinDays = (dateStr, days) => {
-        const d = parseLocalDate(dateStr);
-        if (!d) return false;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const limit = new Date(today);
-        limit.setDate(today.getDate() + days);
-        return d >= today && d <= limit;
+      const isWithinDays = (utcIsoString, days) => {
+        if (!utcIsoString) return false;
+        const d = new Date(utcIsoString);
+        const now = new Date();
+        const limit = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+        return d >= now && d <= limit;
       };
 
       // Follow-Up Radar Scanner
@@ -294,7 +336,7 @@
               itemType: "Parent Task",
               itemTitle: task.title,
               deadlineType: "Soft",
-              deadlineDate: task.softDeadline,
+              deadlineDateIso: task.softDeadline,
               lead: task.leadName || "Unassigned",
               contact: parentContact,
               support: task.supportName,
@@ -314,7 +356,7 @@
               itemType: "Parent Task",
               itemTitle: task.title,
               deadlineType: "Hard",
-              deadlineDate: task.hardDeadline,
+              deadlineDateIso: task.hardDeadline,
               lead: task.leadName || "Unassigned",
               contact: parentContact,
               support: task.supportName,
@@ -339,7 +381,7 @@
                   itemType: `Sub-Task #${idx + 1}`,
                   itemTitle: sub.title || `Sub-Task #${idx + 1}`,
                   deadlineType: "Soft 1",
-                  deadlineDate: sub.soft1,
+                  deadlineDateIso: sub.soft1,
                   lead: subLead,
                   contact: parentContact,
                   support: subSupport,
@@ -358,7 +400,7 @@
                   itemType: `Sub-Task #${idx + 1}`,
                   itemTitle: sub.title || `Sub-Task #${idx + 1}`,
                   deadlineType: "Soft 2",
-                  deadlineDate: sub.soft2,
+                  deadlineDateIso: sub.soft2,
                   lead: subLead,
                   contact: parentContact,
                   support: subSupport,
@@ -377,7 +419,7 @@
                   itemType: `Sub-Task #${idx + 1}`,
                   itemTitle: sub.title || `Sub-Task #${idx + 1}`,
                   deadlineType: "Hard",
-                  deadlineDate: sub.hard,
+                  deadlineDateIso: sub.hard,
                   lead: subLead,
                   contact: parentContact,
                   support: subSupport,
@@ -395,7 +437,7 @@
           if (radarTimeframe === "7days") return item.isOverdue || item.isWithin7;
           if (radarTimeframe === "30days") return item.isOverdue || item.isWithin30;
           return true;
-        }).sort((a, b) => (parseLocalDate(a.deadlineDate) || 0) - (parseLocalDate(b.deadlineDate) || 0));
+        }).sort((a, b) => new Date(a.deadlineDateIso) - new Date(b.deadlineDateIso));
       }, [activeTasks, radarTimeframe]);
 
       const handleExportJSON = () => {
@@ -434,7 +476,24 @@
               <h1 className="text-xl font-bold tracking-wide">Multi-Portfolio Task Hub</h1>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-wrap items-center space-x-3">
+              {/* Time Zone Display Selector */}
+              <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+                <Icons.Globe />
+                <span className="text-slate-400 font-medium">View Time Zone:</span>
+                <select
+                  value={selectedZone}
+                  onChange={e => setSelectedZone(e.target.value)}
+                  className="bg-transparent text-indigo-300 font-semibold focus:outline-none cursor-pointer"
+                >
+                  {TIMEZONES.map(tz => (
+                    <option key={tz.id} value={tz.id} className="bg-slate-800 text-slate-200">
+                      {tz.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button 
                 onClick={() => setShowFirebaseModal(true)}
                 className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
@@ -494,7 +553,6 @@
               ))}
             </div>
 
-            {/* Portfolio Add */}
             <div className="flex items-center space-x-2">
               <input 
                 type="text" 
@@ -547,7 +605,7 @@
 
                   <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-semibold text-amber-400">Due This Week (Soft)</span>
+                      <span className="text-sm font-semibold text-amber-400">Due Next 7 Days (Soft)</span>
                       <Icons.Clock />
                     </div>
                     <p className="text-2xl font-bold text-amber-200">
@@ -569,10 +627,13 @@
                 {/* Follow-Up Radar */}
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
-                    <h2 className="text-lg font-semibold flex items-center space-x-2 text-indigo-400">
-                      <Icons.AlertCircle />
-                      <span>Follow-Up Radar (Personnel Follow-up Tracker)</span>
-                    </h2>
+                    <div>
+                      <h2 className="text-lg font-semibold flex items-center space-x-2 text-indigo-400">
+                        <Icons.AlertCircle />
+                        <span>Follow-Up Radar (Personnel Follow-up Tracker)</span>
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">Showing times in <strong>{TIMEZONES.find(t => t.id === selectedZone)?.label}</strong></p>
+                    </div>
 
                     <div className="flex space-x-1 bg-slate-900 p-1 rounded-lg border border-slate-700 text-xs">
                       {[
@@ -616,7 +677,7 @@
                             <div>
                               <div className="text-[10px] uppercase font-bold text-slate-400">{item.deadlineType} Deadline</div>
                               <div className={`text-xs font-semibold ${item.isOverdue ? 'text-red-400' : 'text-amber-400'}`}>
-                                {item.deadlineDate} {item.isOverdue && '(OVERDUE)'}
+                                {formatDeadline(item.deadlineDateIso)} {item.isOverdue && '(OVERDUE)'}
                               </div>
                             </div>
                             <button
@@ -637,10 +698,13 @@
               </div>
             )}
 
-            {/* TAB 2: ADD / EDIT TASK */}
+            {/* TAB 2: ADD / EDIT TASK WITH UTC INPUTS */}
             {activeTab === "add" && (
               <form onSubmit={handleSaveTask} className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6 max-w-4xl mx-auto">
-                <h2 className="text-lg font-semibold border-b border-slate-700 pb-3">{editingTask ? "Edit Task Details" : "Create New Portfolio Task"}</h2>
+                <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                  <h2 className="text-lg font-semibold">{editingTask ? "Edit Task Details" : "Create New Portfolio Task"}</h2>
+                  <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-2.5 py-1 rounded">All input times are saved in UTC</span>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -682,22 +746,23 @@
                   />
                 </div>
 
+                {/* Task Main UTC Deadlines */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/40 p-4 rounded-lg border border-slate-700/50">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-amber-400 mb-1">Task Soft Deadline</label>
+                    <label className="block text-xs font-semibold uppercase text-amber-400 mb-1">Task Soft Deadline (UTC)</label>
                     <input 
-                      type="date" 
-                      value={form.softDeadline} 
-                      onChange={e => setForm({ ...form, softDeadline: e.target.value })}
+                      type="datetime-local" 
+                      value={pickerFromIso(form.softDeadline)} 
+                      onChange={e => setForm({ ...form, softDeadline: isoFromPicker(e.target.value) })}
                       className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-red-400 mb-1">Task Hard Deadline</label>
+                    <label className="block text-xs font-semibold uppercase text-red-400 mb-1">Task Hard Deadline (UTC)</label>
                     <input 
-                      type="date" 
-                      value={form.hardDeadline} 
-                      onChange={e => setForm({ ...form, hardDeadline: e.target.value })}
+                      type="datetime-local" 
+                      value={pickerFromIso(form.hardDeadline)} 
+                      onChange={e => setForm({ ...form, hardDeadline: isoFromPicker(e.target.value) })}
                       className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" 
                     />
                   </div>
@@ -721,9 +786,10 @@
                   </div>
                 </div>
 
+                {/* Subtasks with UTC inputs */}
                 <div className="space-y-4 border-t border-slate-700 pt-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-xs font-semibold uppercase text-indigo-400">Sub-Tasks (2 Soft + 1 Hard Deadlines)</h3>
+                    <h3 className="text-xs font-semibold uppercase text-indigo-400">Sub-Tasks (UTC Deadlines)</h3>
                     <button type="button" onClick={addSubtask} className="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-xs px-3 py-1 rounded flex items-center space-x-1">
                       <span>+ Add Sub-Task</span>
                     </button>
@@ -746,16 +812,16 @@
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                         <div>
-                          <label className="text-[10px] uppercase font-bold text-amber-400 block mb-1">Soft Deadline 1</label>
-                          <input type="date" value={sub.soft1} onChange={e => updateSubtask(sub.id, "soft1", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
+                          <label className="text-[10px] uppercase font-bold text-amber-400 block mb-1">Soft 1 (UTC)</label>
+                          <input type="datetime-local" value={pickerFromIso(sub.soft1)} onChange={e => updateSubtask(sub.id, "soft1", isoFromPicker(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase font-bold text-amber-400 block mb-1">Soft Deadline 2</label>
-                          <input type="date" value={sub.soft2} onChange={e => updateSubtask(sub.id, "soft2", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
+                          <label className="text-[10px] uppercase font-bold text-amber-400 block mb-1">Soft 2 (UTC)</label>
+                          <input type="datetime-local" value={pickerFromIso(sub.soft2)} onChange={e => updateSubtask(sub.id, "soft2", isoFromPicker(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase font-bold text-red-400 block mb-1">Hard Deadline</label>
-                          <input type="date" value={sub.hard} onChange={e => updateSubtask(sub.id, "hard", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
+                          <label className="text-[10px] uppercase font-bold text-red-400 block mb-1">Hard (UTC)</label>
+                          <input type="datetime-local" value={pickerFromIso(sub.hard)} onChange={e => updateSubtask(sub.id, "hard", isoFromPicker(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                         </div>
                       </div>
 
@@ -816,7 +882,7 @@
                             </div>
                           </div>
 
-                          <div className="flex flex-col justify-between items-end gap-3 min-w-[200px]">
+                          <div className="flex flex-col justify-between items-end gap-3 min-w-[220px]">
                             <select 
                               value={task.status} 
                               onChange={e => handleStatusChange(task.id, e.target.value)}
@@ -830,8 +896,8 @@
                             </select>
 
                             <div className="text-right text-xs space-y-1">
-                              {task.softDeadline && <div className="text-amber-400">Soft: {task.softDeadline}</div>}
-                              {task.hardDeadline && <div className="text-red-400 font-semibold">Hard: {task.hardDeadline}</div>}
+                              {task.softDeadline && <div className="text-amber-400">Soft: {formatDeadline(task.softDeadline)}</div>}
+                              {task.hardDeadline && <div className="text-red-400 font-semibold">Hard: {formatDeadline(task.hardDeadline)}</div>}
                             </div>
 
                             <div className="flex space-x-2 pt-2">
@@ -853,9 +919,9 @@
                                     {s.lead && <span className="text-slate-400 ml-2">(Lead: {s.lead})</span>}
                                   </div>
                                   <div className="flex space-x-3 text-[11px]">
-                                    {s.soft1 && <span className="text-amber-400">Soft 1: {s.soft1}</span>}
-                                    {s.soft2 && <span className="text-amber-400">Soft 2: {s.soft2}</span>}
-                                    {s.hard && <span className="text-red-400 font-bold">Hard: {s.hard}</span>}
+                                    {s.soft1 && <span className="text-amber-400">Soft 1: {formatDeadline(s.soft1)}</span>}
+                                    {s.soft2 && <span className="text-amber-400">Soft 2: {formatDeadline(s.soft2)}</span>}
+                                    {s.hard && <span className="text-red-400 font-bold">Hard: {formatDeadline(s.hard)}</span>}
                                   </div>
                                 </div>
                               ))}
@@ -892,7 +958,7 @@
             )}
           </main>
 
-          {/* Firebase Modal */}
+          {/* Firebase Setup Modal */}
           {showFirebaseModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
               <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-lg w-full p-6 space-y-4">
