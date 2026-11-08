@@ -40,7 +40,8 @@
       Cloud: () => <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 15a4 4 0 004 4h9a5 5 0 001.09-9.88A5.5 5.5 0 006 8.5a4.5 4.5 0 00-3 6.5z"/></svg>,
       Settings: () => <svg className="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
       Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>,
-      Edit: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      Edit: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>,
+      X: () => <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
     };
 
     function TaskManagerApp() {
@@ -69,6 +70,7 @@
       const [activePortfolio, setActivePortfolio] = useState("ALL");
       const [searchQuery, setSearchQuery] = useState("");
       const [editingTask, setEditingTask] = useState(null);
+      const [radarTimeframe, setRadarTimeframe] = useState("7days"); // 'overdue', '7days', '30days', 'all'
 
       const [form, setForm] = useState({
         portfolio: "CTD",
@@ -147,10 +149,27 @@
 
       // Portfolio Actions
       const handleAddPortfolio = () => {
-        if (!newPortfolioName.trim()) return;
-        if (portfolios.includes(newPortfolioName.trim())) return alert("Portfolio exists!");
-        setPortfolios([...portfolios, newPortfolioName.trim()]);
+        const trimmed = newPortfolioName.trim();
+        if (!trimmed) return;
+        if (portfolios.includes(trimmed)) return alert("Portfolio already exists!");
+        setPortfolios([...portfolios, trimmed]);
         setNewPortfolioName("");
+      };
+
+      const handleDeletePortfolio = (portfolioToDelete, e) => {
+        e.stopPropagation(); // prevent switching active tab
+        const assignedTasks = tasks.filter(t => t.portfolio === portfolioToDelete);
+        if (assignedTasks.length > 0) {
+          alert(`Cannot delete portfolio "${portfolioToDelete}" because ${assignedTasks.length} task(s) are assigned to it. Please reassign or delete those tasks first.`);
+          return;
+        }
+        if (confirm(`Are you sure you want to delete portfolio "${portfolioToDelete}"?`)) {
+          const updated = portfolios.filter(p => p !== portfolioToDelete);
+          setPortfolios(updated);
+          if (activePortfolio === portfolioToDelete) {
+            setActivePortfolio("ALL");
+          }
+        }
       };
 
       // Sub-task Helpers
@@ -224,8 +243,8 @@
       const filteredTasks = useMemo(() => {
         return tasks.filter(task => {
           const matchesPortfolio = activePortfolio === "ALL" || task.portfolio === activePortfolio;
-          const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                task.leadName.toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesSearch = (task.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                (task.leadName || "").toLowerCase().includes(searchQuery.toLowerCase());
           return matchesPortfolio && matchesSearch;
         });
       }, [tasks, activePortfolio, searchQuery]);
@@ -233,19 +252,150 @@
       const activeTasks = useMemo(() => filteredTasks.filter(t => t.status !== "Completed"), [filteredTasks]);
       const archivedTasks = useMemo(() => filteredTasks.filter(t => t.status === "Completed"), [filteredTasks]);
 
-      const isDueThisWeek = (dateStr) => {
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        const now = new Date();
-        const nextWeek = new Date();
-        nextWeek.setDate(now.getDate() + 7);
-        return d >= now && d <= nextWeek;
+      // Date calculations
+      const parseLocalDate = (dateStr) => {
+        if (!dateStr) return null;
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
       };
 
       const isOverdue = (dateStr) => {
         if (!dateStr) return false;
-        return new Date(dateStr) < new Date();
+        const d = parseLocalDate(dateStr);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return d < today;
       };
+
+      const isWithinDays = (dateStr, days) => {
+        if (!dateStr) return false;
+        const d = parseLocalDate(dateStr);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const limit = new Date(today);
+        limit.setDate(today.getDate() + days);
+        return d >= today && d <= limit;
+      };
+
+      // Comprehensive Follow-Up Radar Scanner (Parent Tasks + Sub-Tasks)
+      const followUpItems = useMemo(() => {
+        const items = [];
+
+        activeTasks.forEach(task => {
+          // Check Parent Soft Deadline
+          if (task.softDeadline) {
+            items.push({
+              id: `${task.id}_parent_soft`,
+              taskId: task.id,
+              taskTitle: task.title,
+              portfolio: task.portfolio,
+              itemType: "Parent Task",
+              itemTitle: task.title,
+              deadlineType: "Soft",
+              deadlineDate: task.softDeadline,
+              lead: task.leadName || "Unassigned",
+              contact: task.leadPhone || task.leadEmail || "No contact info",
+              support: task.supportName,
+              isOverdue: isOverdue(task.softDeadline),
+              isWithin7: isWithinDays(task.softDeadline, 7),
+              isWithin30: isWithinDays(task.softDeadline, 30)
+            });
+          }
+
+          // Check Parent Hard Deadline
+          if (task.hardDeadline) {
+            items.push({
+              id: `${task.id}_parent_hard`,
+              taskId: task.id,
+              taskTitle: task.title,
+              portfolio: task.portfolio,
+              itemType: "Parent Task",
+              itemTitle: task.title,
+              deadlineType: "Hard",
+              deadlineDate: task.hardDeadline,
+              lead: task.leadName || "Unassigned",
+              contact: task.leadPhone || task.leadEmail || "No contact info",
+              support: task.supportName,
+              isOverdue: isOverdue(task.hardDeadline),
+              isWithin7: isWithinDays(task.hardDeadline, 7),
+              isWithin30: isWithinDays(task.hardDeadline, 30)
+            });
+          }
+
+          // Check Sub-Tasks (Soft1, Soft2, Hard)
+          if (task.subtasks && task.subtasks.length > 0) {
+            task.subtasks.forEach((sub, idx) => {
+              const subLead = sub.lead || task.leadName || "Unassigned";
+              const subSupport = sub.support || task.supportName;
+
+              if (sub.soft1) {
+                items.push({
+                  id: `${task.id}_sub_${sub.id}_soft1`,
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  portfolio: task.portfolio,
+                  itemType: `Sub-Task #${idx + 1}`,
+                  itemTitle: sub.title || `Sub-Task #${idx + 1}`,
+                  deadlineType: "Soft 1",
+                  deadlineDate: sub.soft1,
+                  lead: subLead,
+                  contact: task.leadPhone || task.leadEmail || "No contact info",
+                  support: subSupport,
+                  isOverdue: isOverdue(sub.soft1),
+                  isWithin7: isWithinDays(sub.soft1, 7),
+                  isWithin30: isWithinDays(sub.soft1, 30)
+                });
+              }
+
+              if (sub.soft2) {
+                items.push({
+                  id: `${task.id}_sub_${sub.id}_soft2`,
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  portfolio: task.portfolio,
+                  itemType: `Sub-Task #${idx + 1}`,
+                  itemTitle: sub.title || `Sub-Task #${idx + 1}`,
+                  deadlineType: "Soft 2",
+                  deadlineDate: sub.soft2,
+                  lead: subLead,
+                  contact: task.leadPhone || task.leadEmail || "No contact info",
+                  support: subSupport,
+                  isOverdue: isOverdue(sub.soft2),
+                  isWithin7: isWithinDays(sub.soft2, 7),
+                  isWithin30: isWithinDays(sub.soft2, 30)
+                });
+              }
+
+              if (sub.hard) {
+                items.push({
+                  id: `${task.id}_sub_${sub.id}_hard`,
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  portfolio: task.portfolio,
+                  itemType: `Sub-Task #${idx + 1}`,
+                  itemTitle: sub.title || `Sub-Task #${idx + 1}`,
+                  deadlineType: "Hard",
+                  deadlineDate: sub.hard,
+                  lead: subLead,
+                  contact: task.leadPhone || task.leadEmail || "No contact info",
+                  support: subSupport,
+                  isOverdue: isOverdue(sub.hard),
+                  isWithin7: isWithinDays(sub.hard, 7),
+                  isWithin30: isWithinDays(sub.hard, 30)
+                });
+              }
+            });
+          }
+        });
+
+        // Filter based on selected timeframe
+        return items.filter(item => {
+          if (radarTimeframe === "overdue") return item.isOverdue;
+          if (radarTimeframe === "7days") return item.isOverdue || item.isWithin7;
+          if (radarTimeframe === "30days") return item.isOverdue || item.isWithin30;
+          return true; // 'all'
+        }).sort((a, b) => new Date(a.deadlineDate) - new Date(b.deadlineDate));
+      }, [activeTasks, radarTimeframe]);
 
       const handleExportJSON = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ portfolios, tasks }, null, 2));
@@ -310,7 +460,7 @@
             </div>
           </header>
 
-          {/* Portfolio Filter Sub-Header */}
+          {/* Portfolio Filter Sub-Header with Deletion Support */}
           <div className="bg-slate-800/50 border-b border-slate-700 px-6 py-2 flex items-center justify-between overflow-x-auto">
             <div className="flex items-center space-x-2">
               <span className="text-xs text-slate-400 font-semibold uppercase mr-2">Portfolio:</span>
@@ -321,13 +471,25 @@
                 All Portfolios
               </button>
               {portfolios.map(p => (
-                <button
-                  key={p}
-                  onClick={() => setActivePortfolio(p)}
-                  className={`px-3 py-1 rounded-md text-xs font-medium ${activePortfolio === p ? "bg-indigo-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
-                >
-                  {p}
-                </button>
+                <div key={p} className="flex items-center">
+                  <button
+                    onClick={() => setActivePortfolio(p)}
+                    className={`pl-3 pr-1.5 py-1 rounded-l-md text-xs font-medium flex items-center ${activePortfolio === p ? "bg-indigo-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                  >
+                    <span>{p}</span>
+                  </button>
+                  <button
+                    onClick={(e) => handleDeletePortfolio(p, e)}
+                    title={`Delete Portfolio ${p}`}
+                    className={`pr-2 pl-1 py-1.5 rounded-r-md text-xs font-medium border-l ${
+                      activePortfolio === p 
+                        ? "bg-indigo-600 border-indigo-500 text-indigo-200 hover:text-white hover:bg-indigo-700" 
+                        : "bg-slate-700 border-slate-600 text-slate-400 hover:text-red-400 hover:bg-slate-600"
+                    }`}
+                  >
+                    <Icons.X />
+                  </button>
+                </div>
               ))}
             </div>
 
@@ -338,9 +500,10 @@
                 placeholder="New Portfolio..." 
                 value={newPortfolioName} 
                 onChange={e => setNewPortfolioName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddPortfolio()}
                 className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
               />
-              <button onClick={handleAddPortfolio} className="bg-slate-700 hover:bg-slate-600 text-xs px-2 py-1 rounded text-indigo-400 font-semibold">+ Add</button>
+              <button onClick={handleAddPortfolio} className="bg-slate-700 hover:bg-slate-600 text-xs px-2.5 py-1 rounded text-indigo-400 font-semibold">+ Add</button>
             </div>
           </div>
 
@@ -370,6 +533,7 @@
             {/* TAB 1: DASHBOARD */}
             {activeTab === "dashboard" && (
               <div className="space-y-6">
+                {/* Summary Metrics */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
                     <div className="flex justify-between items-center mb-2">
@@ -387,13 +551,13 @@
                       <Icons.Clock />
                     </div>
                     <p className="text-2xl font-bold text-amber-200">
-                      {activeTasks.filter(t => isDueThisWeek(t.softDeadline)).length}
+                      {activeTasks.filter(t => isWithinDays(t.softDeadline, 7)).length}
                     </p>
                   </div>
 
                   <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-semibold text-emerald-400">In Progress</span>
+                      <span className="text-sm font-semibold text-emerald-400">Active In Progress</span>
                       <Icons.CheckCircle />
                     </div>
                     <p className="text-2xl font-bold text-emerald-200">
@@ -402,32 +566,69 @@
                   </div>
                 </div>
 
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-                  <h2 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-indigo-400">
-                    <Icons.AlertCircle />
-                    <span>Follow-Up Radar (Urgent Action Items)</span>
-                  </h2>
+                {/* Enhanced Follow-Up Radar */}
+                <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
+                    <h2 className="text-lg font-semibold flex items-center space-x-2 text-indigo-400">
+                      <Icons.AlertCircle />
+                      <span>Follow-Up Radar (Personnel Follow-up Tracker)</span>
+                    </h2>
+
+                    {/* Timeframe Filters */}
+                    <div className="flex space-x-1 bg-slate-900 p-1 rounded-lg border border-slate-700 text-xs">
+                      {[
+                        { id: "overdue", label: "Overdue Only" },
+                        { id: "7days", label: "Next 7 Days" },
+                        { id: "30days", label: "Next 30 Days" },
+                        { id: "all", label: "All Pending" },
+                      ].map(filter => (
+                        <button
+                          key={filter.id}
+                          onClick={() => setRadarTimeframe(filter.id)}
+                          className={`px-2.5 py-1 rounded font-medium ${radarTimeframe === filter.id ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"}`}
+                        >
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   <div className="space-y-3">
-                    {activeTasks.filter(t => isOverdue(t.hardDeadline) || isDueThisWeek(t.softDeadline)).length === 0 ? (
-                      <p className="text-sm text-slate-400">No urgent follow-ups required for this week.</p>
+                    {followUpItems.length === 0 ? (
+                      <div className="p-6 text-center text-slate-400 text-sm">No action items found for the selected timeframe.</div>
                     ) : (
-                      activeTasks.filter(t => isOverdue(t.hardDeadline) || isDueThisWeek(t.softDeadline)).map(task => (
-                        <div key={task.id} className="bg-slate-900/60 p-4 rounded-lg border border-slate-700/60 flex justify-between items-center">
-                          <div>
+                      followUpItems.map(item => (
+                        <div key={item.id} className="bg-slate-900/70 border border-slate-700/70 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
                             <div className="flex items-center space-x-2">
-                              <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded border border-indigo-500/30 font-semibold">{task.portfolio}</span>
-                              <h3 className="font-medium text-slate-200">{task.title}</h3>
+                              <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded border border-indigo-500/30 font-semibold">{item.portfolio}</span>
+                              <span className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded">{item.itemType}</span>
+                              <h3 className="font-semibold text-slate-200 text-sm">{item.itemTitle}</h3>
                             </div>
-                            <div className="text-xs text-slate-400 mt-2 flex space-x-4">
-                              <span><strong>Lead:</strong> {task.leadName} ({task.leadPhone || task.leadEmail || 'No contact'})</span>
-                              {task.supportName && <span><strong>Support:</strong> {task.supportName}</span>}
+                            
+                            <div className="text-xs text-slate-400 flex flex-wrap space-x-4 pt-1">
+                              <span><strong className="text-slate-300">Target Person:</strong> <span className="text-indigo-300 font-medium">{item.lead}</span> ({item.contact})</span>
+                              {item.support && <span><strong className="text-slate-300">Support:</strong> {item.support}</span>}
+                              {item.itemType !== "Parent Task" && <span className="text-slate-500">Parent Task: {item.taskTitle}</span>}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <span className={`text-xs px-2 py-1 rounded font-semibold ${isOverdue(task.hardDeadline) ? 'bg-red-500/20 text-red-300' : 'bg-amber-500/20 text-amber-300'}`}>
-                              Hard: {task.hardDeadline || 'None'}
-                            </span>
+
+                          <div className="flex items-center space-x-3 text-right">
+                            <div>
+                              <div className="text-[10px] uppercase font-bold text-slate-400">{item.deadlineType} Deadline</div>
+                              <div className={`text-xs font-semibold ${item.isOverdue ? 'text-red-400' : 'text-amber-400'}`}>
+                                {item.deadlineDate} {item.isOverdue && '(OVERDUE)'}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const task = tasks.find(t => t.id === item.taskId);
+                                if (task) { setEditingTask(task); setForm(task); setActiveTab("add"); }
+                              }}
+                              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-indigo-400 font-semibold"
+                            >
+                              View Task
+                            </button>
                           </div>
                         </div>
                       ))
@@ -508,9 +709,9 @@
                 <div className="space-y-3 border-t border-slate-700 pt-4">
                   <h3 className="text-xs font-semibold uppercase text-slate-400">Lead Person Contact Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" placeholder="Lead Name" value={form.leadName} onChange={e => setForm({ ...form, leadName: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" />
-                    <input type="email" placeholder="Email (Optional)" value={form.leadEmail} onChange={e => setForm({ ...form, leadEmail: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" />
-                    <input type="tel" placeholder="Phone (Optional)" value={form.leadPhone} onChange={e => setForm({ ...form, leadPhone: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" />
+                    <input type="text" placeholder="Lead Name" value={form.leadName} onChange={e => setForm({ ...form, leadName: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
+                    <input type="email" placeholder="Email (Optional)" value={form.leadEmail} onChange={e => setForm({ ...form, leadEmail: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
+                    <input type="tel" placeholder="Phone (Optional)" value={form.leadPhone} onChange={e => setForm({ ...form, leadPhone: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
                   </div>
                 </div>
 
@@ -518,9 +719,9 @@
                 <div className="space-y-3 border-t border-slate-700 pt-4">
                   <h3 className="text-xs font-semibold uppercase text-slate-400">Supporting Person(s) Contact Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" placeholder="Supporting Name" value={form.supportName} onChange={e => setForm({ ...form, supportName: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" />
-                    <input type="email" placeholder="Email (Optional)" value={form.supportEmail} onChange={e => setForm({ ...form, supportEmail: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" />
-                    <input type="tel" placeholder="Phone (Optional)" value={form.supportPhone} onChange={e => setForm({ ...form, supportPhone: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm" />
+                    <input type="text" placeholder="Supporting Name" value={form.supportName} onChange={e => setForm({ ...form, supportName: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
+                    <input type="email" placeholder="Email (Optional)" value={form.supportEmail} onChange={e => setForm({ ...form, supportEmail: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
+                    <input type="tel" placeholder="Phone (Optional)" value={form.supportPhone} onChange={e => setForm({ ...form, supportPhone: e.target.value })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
                   </div>
                 </div>
 
@@ -545,27 +746,27 @@
                         placeholder="Sub-task title..." 
                         value={sub.title} 
                         onChange={e => updateSubtask(sub.id, "title", e.target.value)} 
-                        className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm"
+                        className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-slate-200"
                       />
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                         <div>
                           <label className="text-[10px] uppercase font-bold text-amber-400 block mb-1">Soft Deadline 1</label>
-                          <input type="date" value={sub.soft1} onChange={e => updateSubtask(sub.id, "soft1", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs" />
+                          <input type="date" value={sub.soft1} onChange={e => updateSubtask(sub.id, "soft1", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                         </div>
                         <div>
                           <label className="text-[10px] uppercase font-bold text-amber-400 block mb-1">Soft Deadline 2</label>
-                          <input type="date" value={sub.soft2} onChange={e => updateSubtask(sub.id, "soft2", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs" />
+                          <input type="date" value={sub.soft2} onChange={e => updateSubtask(sub.id, "soft2", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                         </div>
                         <div>
                           <label className="text-[10px] uppercase font-bold text-red-400 block mb-1">Hard Deadline</label>
-                          <input type="date" value={sub.hard} onChange={e => updateSubtask(sub.id, "hard", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs" />
+                          <input type="date" value={sub.hard} onChange={e => updateSubtask(sub.id, "hard", e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input type="text" placeholder="Sub-task Lead Person" value={sub.lead} onChange={e => updateSubtask(sub.id, "lead", e.target.value)} className="bg-slate-800 border border-slate-700 rounded p-1.5 text-xs" />
-                        <input type="text" placeholder="Sub-task Support Person" value={sub.support} onChange={e => updateSubtask(sub.id, "support", e.target.value)} className="bg-slate-800 border border-slate-700 rounded p-1.5 text-xs" />
+                        <input type="text" placeholder="Sub-task Lead Person" value={sub.lead} onChange={e => updateSubtask(sub.id, "lead", e.target.value)} className="bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
+                        <input type="text" placeholder="Sub-task Support Person" value={sub.support} onChange={e => updateSubtask(sub.id, "support", e.target.value)} className="bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" />
                       </div>
                     </div>
                   ))}
@@ -595,7 +796,7 @@
                       placeholder="Search tasks or personnel..." 
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-1.5 text-sm"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-4 py-1.5 text-sm text-slate-200"
                     />
                   </div>
                 </div>
@@ -696,7 +897,7 @@
             )}
           </main>
 
-          {/* Firebase Modal */}
+          {/* Firebase Setup Modal */}
           {showFirebaseModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
               <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-lg w-full p-6 space-y-4">
