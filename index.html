@@ -25,7 +25,6 @@
 
     const DEFAULT_PORTFOLIOS = ["CTD", "WHO", "WMA JDN"];
 
-    // Native SVG Icons
     const Icons = {
       FolderPlus: () => <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>,
       Plus: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>,
@@ -70,7 +69,7 @@
       const [activePortfolio, setActivePortfolio] = useState("ALL");
       const [searchQuery, setSearchQuery] = useState("");
       const [editingTask, setEditingTask] = useState(null);
-      const [radarTimeframe, setRadarTimeframe] = useState("7days"); // 'overdue', '7days', '30days', 'all'
+      const [radarTimeframe, setRadarTimeframe] = useState("all");
 
       const [form, setForm] = useState({
         portfolio: "CTD",
@@ -157,7 +156,7 @@
       };
 
       const handleDeletePortfolio = (portfolioToDelete, e) => {
-        e.stopPropagation(); // prevent switching active tab
+        e.stopPropagation();
         const assignedTasks = tasks.filter(t => t.portfolio === portfolioToDelete);
         if (assignedTasks.length > 0) {
           alert(`Cannot delete portfolio "${portfolioToDelete}" because ${assignedTasks.length} task(s) are assigned to it. Please reassign or delete those tasks first.`);
@@ -252,24 +251,25 @@
       const activeTasks = useMemo(() => filteredTasks.filter(t => t.status !== "Completed"), [filteredTasks]);
       const archivedTasks = useMemo(() => filteredTasks.filter(t => t.status === "Completed"), [filteredTasks]);
 
-      // Date calculations
+      // Accurate Local Midnight Date Parsing
       const parseLocalDate = (dateStr) => {
         if (!dateStr) return null;
-        const [year, month, day] = dateStr.split('-').map(Number);
-        return new Date(year, month - 1, day);
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return null;
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       };
 
       const isOverdue = (dateStr) => {
-        if (!dateStr) return false;
         const d = parseLocalDate(dateStr);
+        if (!d) return false;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         return d < today;
       };
 
       const isWithinDays = (dateStr, days) => {
-        if (!dateStr) return false;
         const d = parseLocalDate(dateStr);
+        if (!d) return false;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const limit = new Date(today);
@@ -277,12 +277,14 @@
         return d >= today && d <= limit;
       };
 
-      // Comprehensive Follow-Up Radar Scanner (Parent Tasks + Sub-Tasks)
+      // Follow-Up Radar Scanner
       const followUpItems = useMemo(() => {
         const items = [];
 
         activeTasks.forEach(task => {
-          // Check Parent Soft Deadline
+          const parentContact = task.leadPhone || task.leadEmail || "No contact info";
+
+          // Parent Soft Deadline
           if (task.softDeadline) {
             items.push({
               id: `${task.id}_parent_soft`,
@@ -294,7 +296,7 @@
               deadlineType: "Soft",
               deadlineDate: task.softDeadline,
               lead: task.leadName || "Unassigned",
-              contact: task.leadPhone || task.leadEmail || "No contact info",
+              contact: parentContact,
               support: task.supportName,
               isOverdue: isOverdue(task.softDeadline),
               isWithin7: isWithinDays(task.softDeadline, 7),
@@ -302,7 +304,7 @@
             });
           }
 
-          // Check Parent Hard Deadline
+          // Parent Hard Deadline
           if (task.hardDeadline) {
             items.push({
               id: `${task.id}_parent_hard`,
@@ -314,7 +316,7 @@
               deadlineType: "Hard",
               deadlineDate: task.hardDeadline,
               lead: task.leadName || "Unassigned",
-              contact: task.leadPhone || task.leadEmail || "No contact info",
+              contact: parentContact,
               support: task.supportName,
               isOverdue: isOverdue(task.hardDeadline),
               isWithin7: isWithinDays(task.hardDeadline, 7),
@@ -322,7 +324,7 @@
             });
           }
 
-          // Check Sub-Tasks (Soft1, Soft2, Hard)
+          // Sub-Tasks
           if (task.subtasks && task.subtasks.length > 0) {
             task.subtasks.forEach((sub, idx) => {
               const subLead = sub.lead || task.leadName || "Unassigned";
@@ -339,7 +341,7 @@
                   deadlineType: "Soft 1",
                   deadlineDate: sub.soft1,
                   lead: subLead,
-                  contact: task.leadPhone || task.leadEmail || "No contact info",
+                  contact: parentContact,
                   support: subSupport,
                   isOverdue: isOverdue(sub.soft1),
                   isWithin7: isWithinDays(sub.soft1, 7),
@@ -358,7 +360,7 @@
                   deadlineType: "Soft 2",
                   deadlineDate: sub.soft2,
                   lead: subLead,
-                  contact: task.leadPhone || task.leadEmail || "No contact info",
+                  contact: parentContact,
                   support: subSupport,
                   isOverdue: isOverdue(sub.soft2),
                   isWithin7: isWithinDays(sub.soft2, 7),
@@ -377,7 +379,7 @@
                   deadlineType: "Hard",
                   deadlineDate: sub.hard,
                   lead: subLead,
-                  contact: task.leadPhone || task.leadEmail || "No contact info",
+                  contact: parentContact,
                   support: subSupport,
                   isOverdue: isOverdue(sub.hard),
                   isWithin7: isWithinDays(sub.hard, 7),
@@ -388,13 +390,12 @@
           }
         });
 
-        // Filter based on selected timeframe
         return items.filter(item => {
           if (radarTimeframe === "overdue") return item.isOverdue;
           if (radarTimeframe === "7days") return item.isOverdue || item.isWithin7;
           if (radarTimeframe === "30days") return item.isOverdue || item.isWithin30;
-          return true; // 'all'
-        }).sort((a, b) => new Date(a.deadlineDate) - new Date(b.deadlineDate));
+          return true;
+        }).sort((a, b) => (parseLocalDate(a.deadlineDate) || 0) - (parseLocalDate(b.deadlineDate) || 0));
       }, [activeTasks, radarTimeframe]);
 
       const handleExportJSON = () => {
@@ -460,7 +461,7 @@
             </div>
           </header>
 
-          {/* Portfolio Filter Sub-Header with Deletion Support */}
+          {/* Portfolio Selector */}
           <div className="bg-slate-800/50 border-b border-slate-700 px-6 py-2 flex items-center justify-between overflow-x-auto">
             <div className="flex items-center space-x-2">
               <span className="text-xs text-slate-400 font-semibold uppercase mr-2">Portfolio:</span>
@@ -493,7 +494,7 @@
               ))}
             </div>
 
-            {/* Quick Portfolio Add */}
+            {/* Portfolio Add */}
             <div className="flex items-center space-x-2">
               <input 
                 type="text" 
@@ -528,12 +529,11 @@
             ))}
           </div>
 
-          {/* Main Content Area */}
+          {/* Main Content */}
           <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
             {/* TAB 1: DASHBOARD */}
             {activeTab === "dashboard" && (
               <div className="space-y-6">
-                {/* Summary Metrics */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
                     <div className="flex justify-between items-center mb-2">
@@ -566,7 +566,7 @@
                   </div>
                 </div>
 
-                {/* Enhanced Follow-Up Radar */}
+                {/* Follow-Up Radar */}
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
                     <h2 className="text-lg font-semibold flex items-center space-x-2 text-indigo-400">
@@ -574,13 +574,12 @@
                       <span>Follow-Up Radar (Personnel Follow-up Tracker)</span>
                     </h2>
 
-                    {/* Timeframe Filters */}
                     <div className="flex space-x-1 bg-slate-900 p-1 rounded-lg border border-slate-700 text-xs">
                       {[
+                        { id: "all", label: "All Pending" },
                         { id: "overdue", label: "Overdue Only" },
                         { id: "7days", label: "Next 7 Days" },
                         { id: "30days", label: "Next 30 Days" },
-                        { id: "all", label: "All Pending" },
                       ].map(filter => (
                         <button
                           key={filter.id}
@@ -595,7 +594,7 @@
 
                   <div className="space-y-3">
                     {followUpItems.length === 0 ? (
-                      <div className="p-6 text-center text-slate-400 text-sm">No action items found for the selected timeframe.</div>
+                      <div className="p-6 text-center text-slate-400 text-sm">No follow-ups found for the selected timeframe.</div>
                     ) : (
                       followUpItems.map(item => (
                         <div key={item.id} className="bg-slate-900/70 border border-slate-700/70 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -609,7 +608,7 @@
                             <div className="text-xs text-slate-400 flex flex-wrap space-x-4 pt-1">
                               <span><strong className="text-slate-300">Target Person:</strong> <span className="text-indigo-300 font-medium">{item.lead}</span> ({item.contact})</span>
                               {item.support && <span><strong className="text-slate-300">Support:</strong> {item.support}</span>}
-                              {item.itemType !== "Parent Task" && <span className="text-slate-500">Parent Task: {item.taskTitle}</span>}
+                              {item.itemType !== "Parent Task" && <span className="text-slate-500">Parent: {item.taskTitle}</span>}
                             </div>
                           </div>
 
@@ -638,7 +637,7 @@
               </div>
             )}
 
-            {/* TAB 2: ADD / EDIT TASK FORM WITH SUBTASKS */}
+            {/* TAB 2: ADD / EDIT TASK */}
             {activeTab === "add" && (
               <form onSubmit={handleSaveTask} className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6 max-w-4xl mx-auto">
                 <h2 className="text-lg font-semibold border-b border-slate-700 pb-3">{editingTask ? "Edit Task Details" : "Create New Portfolio Task"}</h2>
@@ -683,7 +682,6 @@
                   />
                 </div>
 
-                {/* Task Main Deadlines */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/40 p-4 rounded-lg border border-slate-700/50">
                   <div>
                     <label className="block text-xs font-semibold uppercase text-amber-400 mb-1">Task Soft Deadline</label>
@@ -705,7 +703,6 @@
                   </div>
                 </div>
 
-                {/* Lead Person Section */}
                 <div className="space-y-3 border-t border-slate-700 pt-4">
                   <h3 className="text-xs font-semibold uppercase text-slate-400">Lead Person Contact Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -715,7 +712,6 @@
                   </div>
                 </div>
 
-                {/* Supporting Person Section */}
                 <div className="space-y-3 border-t border-slate-700 pt-4">
                   <h3 className="text-xs font-semibold uppercase text-slate-400">Supporting Person(s) Contact Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -725,7 +721,6 @@
                   </div>
                 </div>
 
-                {/* SUBTASKS SECTION */}
                 <div className="space-y-4 border-t border-slate-700 pt-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-semibold uppercase text-indigo-400">Sub-Tasks (2 Soft + 1 Hard Deadlines)</h3>
@@ -846,7 +841,7 @@
                           </div>
                         </div>
 
-                        {/* SUBTASKS DISPLAY */}
+                        {/* Sub-Tasks Display */}
                         {task.subtasks && task.subtasks.length > 0 && (
                           <div className="border-t border-slate-700/60 pt-3 mt-2 space-y-2">
                             <h4 className="text-xs font-semibold text-indigo-400">Sub-Tasks ({task.subtasks.length})</h4>
@@ -897,7 +892,7 @@
             )}
           </main>
 
-          {/* Firebase Setup Modal */}
+          {/* Firebase Modal */}
           {showFirebaseModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
               <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-lg w-full p-6 space-y-4">
