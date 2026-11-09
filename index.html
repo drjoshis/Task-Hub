@@ -25,7 +25,6 @@
 
     const DEFAULT_PORTFOLIOS = ["CTD", "WHO", "WMA JDN"];
 
-    // Supported Time Zones
     const TIMEZONES = [
       { id: "UTC", label: "UTC (Coordinated Universal Time)", zone: "UTC" },
       { id: "Delhi", label: "Delhi, India (IST)", zone: "Asia/Kolkata" },
@@ -73,9 +72,9 @@
 
       const [selectedZone, setSelectedZone] = useState("UTC");
       const [isSyncing, setIsSyncing] = useState(false);
-      const [syncStatus, setSyncStatus] = useState("local");
+      const [syncStatus, setSyncStatus] = useState(firebaseConfig ? "connected" : "local");
       const [showFirebaseModal, setShowFirebaseModal] = useState(false);
-      const [configInput, setConfigInput] = useState("");
+      const [configInput, setConfigInput] = useState(firebaseConfig ? JSON.stringify(firebaseConfig, null, 2) : "");
       const [newPortfolioName, setNewPortfolioName] = useState("");
 
       const [activeTab, setActiveTab] = useState("dashboard");
@@ -100,7 +99,7 @@
         subtasks: []
       });
 
-      // Firebase Sync Listener
+      // Fixed Firebase Initialization and Auto-Reconnect Effect
       useEffect(() => {
         if (!firebaseConfig) {
           setSyncStatus("local");
@@ -146,7 +145,7 @@
       useEffect(() => {
         localStorage.setItem("tm_tasks", JSON.stringify(tasks));
         
-        if (firebaseConfig && firebase.apps.length && syncStatus === "connected") {
+        if (firebaseConfig && firebase.apps.length) {
           setIsSyncing(true);
           const db = firebase.firestore();
           db.collection("task_manager").doc("app_data").set({
@@ -159,13 +158,12 @@
         }
       }, [tasks, portfolios]);
 
-      // Timezone Conversion Helper
       const formatDeadline = (utcIsoString, zoneKey = selectedZone) => {
         if (!utcIsoString) return "";
         try {
           const tzObj = TIMEZONES.find(t => t.id === zoneKey) || TIMEZONES[0];
           const date = new Date(utcIsoString);
-          if (isNaN(date.getTime())) return utcIsoString; // fallback for legacy YYYY-MM-DD
+          if (isNaN(date.getTime())) return utcIsoString;
 
           return new Intl.DateTimeFormat("en-US", {
             timeZone: tzObj.zone,
@@ -181,13 +179,11 @@
         }
       };
 
-      // Converts input HTML datetime-local value (assumed UTC) into UTC ISO format
       const isoFromPicker = (localPickerVal) => {
         if (!localPickerVal) return "";
         return new Date(localPickerVal + "Z").toISOString();
       };
 
-      // Converts UTC ISO string back into HTML datetime-local input string
       const pickerFromIso = (isoStr) => {
         if (!isoStr) return "";
         try {
@@ -199,7 +195,6 @@
         }
       };
 
-      // Portfolio Actions
       const handleAddPortfolio = () => {
         const trimmed = newPortfolioName.trim();
         if (!trimmed) return;
@@ -224,7 +219,6 @@
         }
       };
 
-      // Sub-task Helpers
       const addSubtask = () => {
         setForm({
           ...form,
@@ -253,12 +247,22 @@
             alert("Invalid config! Ensure your object includes apiKey and projectId.");
             return;
           }
-          setFirebaseConfig(parsed);
           localStorage.setItem("tm_firebase_config", JSON.stringify(parsed));
+          setFirebaseConfig(parsed);
           setShowFirebaseModal(false);
           alert("Firebase connected! Live cloud sync is active.");
         } catch (e) {
           alert("Invalid JSON format. Please paste a valid firebaseConfig object.");
+        }
+      };
+
+      const handleDisconnectFirebase = () => {
+        if (confirm("Disconnect Firebase cloud sync for this device?")) {
+          localStorage.removeItem("tm_firebase_config");
+          setFirebaseConfig(null);
+          setSyncStatus("local");
+          setConfigInput("");
+          setShowFirebaseModal(false);
         }
       };
 
@@ -304,7 +308,6 @@
       const activeTasks = useMemo(() => filteredTasks.filter(t => t.status !== "Completed"), [filteredTasks]);
       const archivedTasks = useMemo(() => filteredTasks.filter(t => t.status === "Completed"), [filteredTasks]);
 
-      // Overdue/Time calculations in UTC
       const isOverdue = (utcIsoString) => {
         if (!utcIsoString) return false;
         const d = new Date(utcIsoString);
@@ -319,14 +322,12 @@
         return d >= now && d <= limit;
       };
 
-      // Follow-Up Radar Scanner
       const followUpItems = useMemo(() => {
         const items = [];
 
         activeTasks.forEach(task => {
           const parentContact = task.leadPhone || task.leadEmail || "No contact info";
 
-          // Parent Soft Deadline
           if (task.softDeadline) {
             items.push({
               id: `${task.id}_parent_soft`,
@@ -346,7 +347,6 @@
             });
           }
 
-          // Parent Hard Deadline
           if (task.hardDeadline) {
             items.push({
               id: `${task.id}_parent_hard`,
@@ -366,7 +366,6 @@
             });
           }
 
-          // Sub-Tasks
           if (task.subtasks && task.subtasks.length > 0) {
             task.subtasks.forEach((sub, idx) => {
               const subLead = sub.lead || task.leadName || "Unassigned";
@@ -441,7 +440,7 @@
       }, [activeTasks, radarTimeframe]);
 
       const handleExportJSON = () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ portfolios, tasks }, null, 2));
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ portfolios, tasks, firebaseConfig }, null, 2));
         const anchor = document.createElement("a");
         anchor.setAttribute("href", dataStr);
         anchor.setAttribute("download", `task_manager_backup_${new Date().toISOString().slice(0,10)}.json`);
@@ -458,6 +457,10 @@
             const parsed = JSON.parse(event.target.result);
             if (parsed.portfolios) setPortfolios(parsed.portfolios);
             if (parsed.tasks) setTasks(parsed.tasks);
+            if (parsed.firebaseConfig) {
+              setFirebaseConfig(parsed.firebaseConfig);
+              localStorage.setItem("tm_firebase_config", JSON.stringify(parsed.firebaseConfig));
+            }
             alert("Backup imported successfully!");
           } catch (err) {
             alert("Invalid JSON backup file.");
@@ -477,7 +480,6 @@
             </div>
 
             <div className="flex flex-wrap items-center space-x-3">
-              {/* Time Zone Display Selector */}
               <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
                 <Icons.Globe />
                 <span className="text-slate-400 font-medium">View Time Zone:</span>
@@ -698,7 +700,7 @@
               </div>
             )}
 
-            {/* TAB 2: ADD / EDIT TASK WITH UTC INPUTS */}
+            {/* TAB 2: ADD / EDIT TASK */}
             {activeTab === "add" && (
               <form onSubmit={handleSaveTask} className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6 max-w-4xl mx-auto">
                 <div className="flex justify-between items-center border-b border-slate-700 pb-3">
@@ -746,7 +748,6 @@
                   />
                 </div>
 
-                {/* Task Main UTC Deadlines */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/40 p-4 rounded-lg border border-slate-700/50">
                   <div>
                     <label className="block text-xs font-semibold uppercase text-amber-400 mb-1">Task Soft Deadline (UTC)</label>
@@ -786,7 +787,6 @@
                   </div>
                 </div>
 
-                {/* Subtasks with UTC inputs */}
                 <div className="space-y-4 border-t border-slate-700 pt-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-semibold uppercase text-indigo-400">Sub-Tasks (UTC Deadlines)</h3>
@@ -907,7 +907,6 @@
                           </div>
                         </div>
 
-                        {/* Sub-Tasks Display */}
                         {task.subtasks && task.subtasks.length > 0 && (
                           <div className="border-t border-slate-700/60 pt-3 mt-2 space-y-2">
                             <h4 className="text-xs font-semibold text-indigo-400">Sub-Tasks ({task.subtasks.length})</h4>
@@ -962,10 +961,15 @@
           {showFirebaseModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
               <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-lg w-full p-6 space-y-4">
-                <h3 className="text-lg font-bold text-slate-100 flex items-center space-x-2">
-                  <Icons.Cloud />
-                  <span>Connect Free Firebase Cloud Sync</span>
-                </h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-bold text-slate-100 flex items-center space-x-2">
+                    <Icons.Cloud />
+                    <span>Firebase Cloud Sync Settings</span>
+                  </h3>
+                  {firebaseConfig && (
+                    <button onClick={handleDisconnectFirebase} className="text-xs text-red-400 hover:underline font-medium">Disconnect</button>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400">
                   Paste your `firebaseConfig` object from your Firebase Console below to turn on instant multi-device syncing.
                 </p>
@@ -978,7 +982,7 @@
                 ></textarea>
                 <div className="flex justify-end space-x-2">
                   <button onClick={() => setShowFirebaseModal(false)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-xs">Cancel</button>
-                  <button onClick={handleSaveFirebaseConfig} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-semibold">Connect & Sync</button>
+                  <button onClick={handleSaveFirebaseConfig} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-semibold">Connect & Save</button>
                 </div>
               </div>
             </div>
