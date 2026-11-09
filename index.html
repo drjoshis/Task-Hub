@@ -99,7 +99,6 @@
         subtasks: []
       });
 
-      // Fixed Firebase Initialization and Auto-Reconnect Effect
       useEffect(() => {
         if (!firebaseConfig) {
           setSyncStatus("local");
@@ -157,6 +156,29 @@
           .catch(() => setIsSyncing(false));
         }
       }, [tasks, portfolios]);
+
+      // Factory Reset Logic
+      const handleFactoryReset = () => {
+        const confirmFirst = confirm("Warning: This will clear all local tasks, portfolios, and configuration. Are you sure?");
+        if (!confirmFirst) return;
+
+        const confirmSecond = confirm("Double check: Do you want to proceed with clearing all cached local data?");
+        if (!confirmSecond) return;
+
+        localStorage.removeItem("tm_portfolios");
+        localStorage.removeItem("tm_tasks");
+        localStorage.removeItem("tm_firebase_config");
+
+        setPortfolios(DEFAULT_PORTFOLIOS);
+        setTasks([]);
+        setFirebaseConfig(null);
+        setSyncStatus("local");
+        setConfigInput("");
+        setActivePortfolio("ALL");
+        setEditingTask(null);
+
+        alert("Local cache cleared! Task manager has been reset.");
+      };
 
       const formatDeadline = (utcIsoString, zoneKey = selectedZone) => {
         if (!utcIsoString) return "";
@@ -519,10 +541,20 @@
                 <span>Import</span>
                 <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
               </label>
+
+              {/* Reset Cache Button */}
+              <button 
+                onClick={handleFactoryReset} 
+                className="flex items-center space-x-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1.5 rounded text-xs transition-colors"
+                title="Reset application local cache"
+              >
+                <Icons.Trash />
+                <span>Reset Cache</span>
+              </button>
             </div>
           </header>
 
-          {/* Portfolio Selector */}
+          {/* Portfolio Selector Sub-Header */}
           <div className="bg-slate-800/50 border-b border-slate-700 px-6 py-2 flex items-center justify-between overflow-x-auto">
             <div className="flex items-center space-x-2">
               <span className="text-xs text-slate-400 font-semibold uppercase mr-2">Portfolio:</span>
@@ -568,7 +600,7 @@
             </div>
           </div>
 
-          {/* Navigation Bar */}
+          {/* Navigation Tabs */}
           <div className="bg-slate-800 border-b border-slate-700 px-6 flex space-x-6 text-sm">
             {[
               { id: "dashboard", label: "Dashboard & Alerts", icon: Icons.AlertCircle },
@@ -589,9 +621,8 @@
             ))}
           </div>
 
-          {/* Main Content */}
+          {/* Main Content Area */}
           <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
-            {/* TAB 1: DASHBOARD */}
             {activeTab === "dashboard" && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -626,7 +657,6 @@
                   </div>
                 </div>
 
-                {/* Follow-Up Radar */}
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
                     <div>
@@ -700,7 +730,6 @@
               </div>
             )}
 
-            {/* TAB 2: ADD / EDIT TASK */}
             {activeTab === "add" && (
               <form onSubmit={handleSaveTask} className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6 max-w-4xl mx-auto">
                 <div className="flex justify-between items-center border-b border-slate-700 pb-3">
@@ -846,7 +875,6 @@
               </form>
             )}
 
-            {/* TAB 3: ACTIVE TASKS */}
             {activeTab === "tasks" && (
               <div className="space-y-4">
                 <div className="flex justify-between items-center bg-slate-800 p-4 rounded-xl border border-slate-700">
@@ -934,7 +962,6 @@
               </div>
             )}
 
-            {/* TAB 4: COMPLETED ARCHIVE */}
             {activeTab === "archive" && (
               <div className="space-y-3">
                 {archivedTasks.length === 0 ? (
@@ -957,7 +984,6 @@
             )}
           </main>
 
-          {/* Firebase Setup Modal */}
           {showFirebaseModal && (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
               <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-lg w-full p-6 space-y-4">
