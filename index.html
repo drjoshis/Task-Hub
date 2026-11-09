@@ -64,16 +64,82 @@
       Mail: () => <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
     };
 
+    // Searchable Contact Combobox Component
+    function SearchableContactInput({ contacts, value, onChange, onSelectContact, placeholder, className = "" }) {
+      const [isOpen, setIsOpen] = useState(false);
+      const containerRef = useRef(null);
+
+      const filtered = useMemo(() => {
+        if (!value) return contacts;
+        const q = value.toLowerCase();
+        return contacts.filter(c => 
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.email || "").toLowerCase().includes(q) ||
+          (c.phone || "").toLowerCase().includes(q) ||
+          (c.notes || "").toLowerCase().includes(q)
+        );
+      }, [contacts, value]);
+
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (containerRef.current && !containerRef.current.contains(e.target)) {
+            setIsOpen(false);
+          }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+      }, []);
+
+      return (
+        <div ref={containerRef} className="relative w-full">
+          <input
+            type="text"
+            placeholder={placeholder}
+            value={value}
+            onFocus={() => setIsOpen(true)}
+            onChange={(e) => {
+              onChange(e.target.value);
+              setIsOpen(true);
+            }}
+            className={className || "w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"}
+          />
+          {isOpen && filtered.length > 0 && (
+            <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-slate-800 border border-slate-700 rounded-md shadow-xl">
+              {filtered.map(contact => (
+                <div
+                  key={contact.id}
+                  onClick={() => {
+                    onSelectContact(contact);
+                    setIsOpen(false);
+                  }}
+                  className="p-2 hover:bg-slate-700/80 cursor-pointer text-xs border-b border-slate-700/40 last:border-0 flex justify-between items-center"
+                >
+                  <div>
+                    <div className="font-bold text-slate-200">{contact.name}</div>
+                    <div className="text-[10px] text-slate-400">
+                      {contact.email && `${contact.email}`} {contact.phone && `• ${contact.phone}`}
+                    </div>
+                  </div>
+                  {contact.notes && (
+                    <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30">
+                      {contact.notes}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     const computeTaskStatus = (subtasks, fallbackStatus = "Not Started") => {
       if (!subtasks || subtasks.length === 0) return fallbackStatus;
-      
       const statuses = subtasks.map(s => s.status || "Not Started");
-      
       if (statuses.some(s => s === "Stalled")) return "Stalled";
       if (statuses.some(s => s === "Deferred")) return "Deferred";
       if (statuses.every(s => s === "Completed")) return "Completed";
       if (statuses.some(s => s === "In Progress" || s === "Completed")) return "In Progress";
-      
       return "Not Started";
     };
 
@@ -121,20 +187,15 @@
       const [editingContact, setEditingContact] = useState(null);
       const [radarTimeframe, setRadarTimeframe] = useState("all");
 
-      // Collapsible state for tasks in follow-up radar
       const [collapsedRadarTasks, setCollapsedRadarTasks] = useState({});
-
       const isRemoteUpdate = useRef(false);
 
-      // Task Form State
       const [form, setForm] = useState({
         portfolio: "CTD",
         title: "",
-        leadContactId: "",
         leadName: "",
         leadEmail: "",
         leadPhone: "",
-        supportContactId: "",
         supportName: "",
         supportEmail: "",
         supportPhone: "",
@@ -145,7 +206,6 @@
         subtasks: []
       });
 
-      // Contact Form State
       const [contactForm, setContactForm] = useState({
         name: "",
         email: "",
@@ -168,9 +228,7 @@
 
           const unsubscribe = db.collection("task_manager").doc("app_data")
             .onSnapshot((doc) => {
-              if (doc.metadata.hasPendingWrites) {
-                return;
-              }
+              if (doc.metadata.hasPendingWrites) return;
 
               if (doc.exists) {
                 const data = doc.data();
@@ -189,9 +247,7 @@
                   localStorage.setItem("tm_contacts", JSON.stringify(data.contacts));
                 }
                 
-                setTimeout(() => {
-                  isRemoteUpdate.current = false;
-                }, 100);
+                setTimeout(() => { isRemoteUpdate.current = false; }, 100);
               }
               setIsSyncing(false);
             }, (error) => {
@@ -219,9 +275,7 @@
       useEffect(() => {
         localStorage.setItem("tm_tasks", JSON.stringify(tasks));
 
-        if (isRemoteUpdate.current) {
-          return;
-        }
+        if (isRemoteUpdate.current) return;
         
         if (firebaseConfig && firebase.apps.length && syncStatus === "connected") {
           setIsSyncing(true);
@@ -240,7 +294,6 @@
       const handleFactoryReset = () => {
         const confirmFirst = confirm("Warning: This will clear all local tasks, portfolios, contacts, and configuration. Are you sure?");
         if (!confirmFirst) return;
-
         const confirmSecond = confirm("Double check: Do you want to proceed with clearing all cached local data?");
         if (!confirmSecond) return;
 
@@ -317,48 +370,10 @@
         if (confirm(`Are you sure you want to delete portfolio "${portfolioToDelete}"?`)) {
           const updated = portfolios.filter(p => p !== portfolioToDelete);
           setPortfolios(updated);
-          if (activePortfolio === portfolioToDelete) {
-            setActivePortfolio("ALL");
-          }
+          if (activePortfolio === portfolioToDelete) setActivePortfolio("ALL");
         }
       };
 
-      // Contact Selection Helpers
-      const handleSelectLeadContact = (contactId) => {
-        if (!contactId) {
-          setForm({ ...form, leadContactId: "", leadName: "", leadEmail: "", leadPhone: "" });
-          return;
-        }
-        const found = contacts.find(c => c.id === contactId);
-        if (found) {
-          setForm({
-            ...form,
-            leadContactId: found.id,
-            leadName: found.name,
-            leadEmail: found.email || "",
-            leadPhone: found.phone || ""
-          });
-        }
-      };
-
-      const handleSelectSupportContact = (contactId) => {
-        if (!contactId) {
-          setForm({ ...form, supportContactId: "", supportName: "", supportEmail: "", supportPhone: "" });
-          return;
-        }
-        const found = contacts.find(c => c.id === contactId);
-        if (found) {
-          setForm({
-            ...form,
-            supportContactId: found.id,
-            supportName: found.name,
-            supportEmail: found.email || "",
-            supportPhone: found.phone || ""
-          });
-        }
-      };
-
-      // Contact Book Management
       const handleSaveContact = (e) => {
         e.preventDefault();
         if (!contactForm.name.trim()) return alert("Contact name is required");
@@ -450,8 +465,8 @@
 
         setForm({
           portfolio: portfolios[0] || "CTD",
-          title: "", leadContactId: "", leadName: "", leadEmail: "", leadPhone: "",
-          supportContactId: "", supportName: "", supportEmail: "", supportPhone: "",
+          title: "", leadName: "", leadEmail: "", leadPhone: "",
+          supportName: "", supportEmail: "", supportPhone: "",
           softDeadline: "", hardDeadline: "", status: "Not Started", remarks: "", subtasks: []
         });
         setActiveTab("tasks");
@@ -512,10 +527,8 @@
       const activeTasks = useMemo(() => filteredTasks.filter(t => t.status !== "Completed"), [filteredTasks]);
       const archivedTasks = useMemo(() => filteredTasks.filter(t => t.status === "Completed"), [filteredTasks]);
 
-      // Global Progress calculation for Dashboard
       const overallProgressStats = useMemo(() => {
         if (activeTasks.length === 0) return { totalWeight: 0, completedWeight: 0, percent: 100 };
-        
         let totalItems = 0;
         let completedItems = 0;
 
@@ -549,7 +562,6 @@
         return d >= now && d <= limit;
       };
 
-      // Follow-up Items grouped by Parent Task for Collapsible UI in Radar
       const groupedRadarTasks = useMemo(() => {
         const taskGroupMap = {};
 
@@ -635,8 +647,7 @@
                   contact: parentContact,
                   support: subSupport,
                   isOverdue: isOverdue(sub.soft2),
-                  isWithin7: isWithinDays(sub.soft2, 7),
-                  isWithin30: isWithinDays(sub.soft2, 30)
+                  isWithin7: isWithinDays(sub.soft2, 30)
                 });
               }
 
@@ -832,7 +843,7 @@
               { id: "dashboard", label: "Dashboard & Alerts", icon: Icons.AlertCircle },
               { id: "add", label: editingTask ? "Edit Task" : "Add Task", icon: Icons.Plus },
               { id: "tasks", label: `Active Tasks (${activeTasks.length})`, icon: Icons.Clock },
-              { id: "contacts", label: `Contacts (${contacts.length})`, icon: Icons.Users },
+              { id: "contacts", label: `Contacts Directory (${contacts.length})`, icon: Icons.Users },
               { id: "archive", label: `Completed Archive (${archivedTasks.length})`, icon: Icons.Archive },
             ].map(tab => (
               <button
@@ -852,7 +863,6 @@
           <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
             {activeTab === "dashboard" && (
               <div className="space-y-6">
-                {/* Global Active Tasks Completion Progress Bar */}
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3 shadow-lg">
                   <div className="flex justify-between items-center">
                     <div>
@@ -920,7 +930,6 @@
                   </div>
                 </div>
 
-                {/* Follow-Up Radar Section with Collapsible Sub-tasks */}
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
                     <div>
@@ -967,7 +976,6 @@
 
                         return (
                           <div key={task.id} className="bg-slate-900/80 border border-slate-700/80 rounded-xl overflow-hidden">
-                            {/* Main Task Header Card on Follow-Up Radar */}
                             <div className="p-4 bg-slate-800/90 border-b border-slate-700/70 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                               <div className="space-y-1.5 flex-1">
                                 <div className="flex items-center space-x-2">
@@ -989,7 +997,6 @@
                                   <span className="text-slate-400">Status: <strong className="text-indigo-300">{task.status}</strong></span>
                                 </div>
 
-                                {/* Progress Bar on Follow-Up Radar Parent Card */}
                                 {hasSubtasks && (
                                   <div className="mt-2 bg-slate-900 border border-slate-700/70 p-2 rounded-lg space-y-1 max-w-sm">
                                     <div className="flex justify-between items-center text-[10px]">
@@ -1020,7 +1027,6 @@
                               </div>
                             </div>
 
-                            {/* Collapsible Follow-up items list under parent task */}
                             {!isCollapsed && (
                               <div className="p-3 space-y-2 bg-slate-900/40">
                                 {group.items.map(item => (
@@ -1125,53 +1131,79 @@
                   </div>
                 </div>
 
-                {/* Lead Person Section with Contact Picker */}
+                {/* Lead Person Section with Searchable Contact Autocomplete */}
                 <div className="space-y-3 border-t border-slate-700 pt-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-semibold uppercase text-slate-400">Lead Person Contact Information</h3>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-[11px] text-slate-400 font-medium">Select Contact:</span>
-                      <select 
-                        value={form.leadContactId || ""}
-                        onChange={e => handleSelectLeadContact(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 rounded text-xs text-indigo-300 font-semibold p-1"
-                      >
-                        <option value="">-- Custom / Manual Contact --</option>
-                        {contacts.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} {c.notes ? `(${c.notes})` : ''}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <span className="text-[10px] text-indigo-400">Type name to search directory</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" placeholder="Lead Name" value={form.leadName} onChange={e => setForm({ ...form, leadName: e.target.value, leadContactId: "" })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
-                    <input type="email" placeholder="Email (Optional)" value={form.leadEmail} onChange={e => setForm({ ...form, leadEmail: e.target.value, leadContactId: "" })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
-                    <input type="tel" placeholder="Phone (Optional)" value={form.leadPhone} onChange={e => setForm({ ...form, leadPhone: e.target.value, leadContactId: "" })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
+                    <SearchableContactInput
+                      contacts={contacts}
+                      value={form.leadName}
+                      onChange={val => setForm({ ...form, leadName: val })}
+                      onSelectContact={contact => {
+                        setForm({
+                          ...form,
+                          leadName: contact.name,
+                          leadEmail: contact.email || "",
+                          leadPhone: contact.phone || ""
+                        });
+                      }}
+                      placeholder="Start typing Lead Name..."
+                    />
+                    <input 
+                      type="email" 
+                      placeholder="Email (Optional)" 
+                      value={form.leadEmail} 
+                      onChange={e => setForm({ ...form, leadEmail: e.target.value })} 
+                      className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" 
+                    />
+                    <input 
+                      type="tel" 
+                      placeholder="Phone (Optional)" 
+                      value={form.leadPhone} 
+                      onChange={e => setForm({ ...form, leadPhone: e.target.value })} 
+                      className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" 
+                    />
                   </div>
                 </div>
 
-                {/* Supporting Person Section with Contact Picker */}
+                {/* Supporting Person Section with Searchable Contact Autocomplete */}
                 <div className="space-y-3 border-t border-slate-700 pt-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-semibold uppercase text-slate-400">Supporting Person(s) Contact Information</h3>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-[11px] text-slate-400 font-medium">Select Contact:</span>
-                      <select 
-                        value={form.supportContactId || ""}
-                        onChange={e => handleSelectSupportContact(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 rounded text-xs text-indigo-300 font-semibold p-1"
-                      >
-                        <option value="">-- Custom / Manual Contact --</option>
-                        {contacts.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} {c.notes ? `(${c.notes})` : ''}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <span className="text-[10px] text-indigo-400">Type name to search directory</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input type="text" placeholder="Supporting Name" value={form.supportName} onChange={e => setForm({ ...form, supportName: e.target.value, supportContactId: "" })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
-                    <input type="email" placeholder="Email (Optional)" value={form.supportEmail} onChange={e => setForm({ ...form, supportEmail: e.target.value, supportContactId: "" })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
-                    <input type="tel" placeholder="Phone (Optional)" value={form.supportPhone} onChange={e => setForm({ ...form, supportPhone: e.target.value, supportContactId: "" })} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" />
+                    <SearchableContactInput
+                      contacts={contacts}
+                      value={form.supportName}
+                      onChange={val => setForm({ ...form, supportName: val })}
+                      onSelectContact={contact => {
+                        setForm({
+                          ...form,
+                          supportName: contact.name,
+                          supportEmail: contact.email || "",
+                          supportPhone: contact.phone || ""
+                        });
+                      }}
+                      placeholder="Start typing Supporting Name..."
+                    />
+                    <input 
+                      type="email" 
+                      placeholder="Email (Optional)" 
+                      value={form.supportEmail} 
+                      onChange={e => setForm({ ...form, supportEmail: e.target.value })} 
+                      className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" 
+                    />
+                    <input 
+                      type="tel" 
+                      placeholder="Phone (Optional)" 
+                      value={form.supportPhone} 
+                      onChange={e => setForm({ ...form, supportPhone: e.target.value })} 
+                      className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-200" 
+                    />
                   </div>
                 </div>
 
@@ -1230,47 +1262,29 @@
                         </div>
                       </div>
 
-                      {/* Subtask Contact Pickers or Free Text */}
+                      {/* Sub-Task Searchable Contact Comboboxes */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div>
-                          <select
-                            value={contacts.find(c => c.name === sub.lead)?.id || ""}
-                            onChange={e => {
-                              const found = contacts.find(c => c.id === e.target.value);
-                              updateSubtask(sub.id, "lead", found ? found.name : e.target.value);
-                            }}
-                            className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200 mb-1"
-                          >
-                            <option value="">-- Select Sub-Task Lead --</option>
-                            {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                          <input 
-                            type="text" 
-                            placeholder="Sub-task Lead Person (Custom)" 
-                            value={sub.lead} 
-                            onChange={e => updateSubtask(sub.id, "lead", e.target.value)} 
-                            className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" 
+                          <label className="text-[10px] text-slate-400 font-semibold block mb-0.5">Sub-Task Lead</label>
+                          <SearchableContactInput
+                            contacts={contacts}
+                            value={sub.lead}
+                            onChange={val => updateSubtask(sub.id, "lead", val)}
+                            onSelectContact={contact => updateSubtask(sub.id, "lead", contact.name)}
+                            placeholder="Type Sub-task Lead..."
+                            className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200"
                           />
                         </div>
 
                         <div>
-                          <select
-                            value={contacts.find(c => c.name === sub.support)?.id || ""}
-                            onChange={e => {
-                              const found = contacts.find(c => c.id === e.target.value);
-                              updateSubtask(sub.id, "support", found ? found.name : e.target.value);
-                            }}
-                            className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200 mb-1"
-                          >
-                            <option value="">-- Select Sub-Task Support --</option>
-                            {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                          <input 
-                            type="text" 
-                            placeholder="Sub-task Support Person (Custom)" 
-                            value={sub.support} 
-                            onChange={e => updateSubtask(sub.id, "support", e.target.value)} 
-                            className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200" 
+                          <label className="text-[10px] text-slate-400 font-semibold block mb-0.5">Sub-Task Support</label>
+                          <SearchableContactInput
+                            contacts={contacts}
+                            value={sub.support}
+                            onChange={val => updateSubtask(sub.id, "support", val)}
+                            onSelectContact={contact => updateSubtask(sub.id, "support", contact.name)}
+                            placeholder="Type Sub-task Support..."
+                            className="w-full bg-slate-800 border border-slate-700 rounded p-1.5 text-xs text-slate-200"
                           />
                         </div>
                       </div>
@@ -1335,7 +1349,6 @@
                                 {task.remarks && <p className="italic text-slate-300 mt-2 bg-slate-900/50 p-2 rounded">{task.remarks}</p>}
                               </div>
 
-                              {/* Parent Task Visual Progress Bar */}
                               {hasSubtasks && (
                                 <div className="mt-3 bg-slate-900/80 border border-slate-700/60 p-2.5 rounded-lg space-y-1.5 max-w-md">
                                   <div className="flex justify-between items-center text-[11px]">
@@ -1424,10 +1437,9 @@
               </div>
             )}
 
-            {/* Contact Book Tab */}
+            {/* Contacts Directory Tab */}
             {activeTab === "contacts" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Contact Input Form */}
                 <form onSubmit={handleSaveContact} className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 h-fit">
                   <h2 className="text-base font-bold text-indigo-400 flex items-center space-x-2 border-b border-slate-700 pb-2">
                     <Icons.Users />
@@ -1498,7 +1510,6 @@
                   </div>
                 </form>
 
-                {/* Contact List */}
                 <div className="lg:col-span-2 space-y-4">
                   <div className="flex justify-between items-center bg-slate-800 p-4 rounded-xl border border-slate-700">
                     <div className="relative flex-1 max-w-md">
