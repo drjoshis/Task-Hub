@@ -51,7 +51,9 @@
       Trash: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>,
       Edit: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>,
       X: () => <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>,
-      Globe: () => <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Globe: () => <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+      ChevronDown: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/></svg>,
+      ChevronRight: () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
     };
 
     const computeTaskStatus = (subtasks, fallbackStatus = "Not Started") => {
@@ -103,6 +105,9 @@
       const [searchQuery, setSearchQuery] = useState("");
       const [editingTask, setEditingTask] = useState(null);
       const [radarTimeframe, setRadarTimeframe] = useState("all");
+
+      // Collapsible state for tasks in follow-up radar
+      const [collapsedRadarTasks, setCollapsedRadarTasks] = useState({});
 
       const isRemoteUpdate = useRef(false);
 
@@ -404,6 +409,29 @@
       const activeTasks = useMemo(() => filteredTasks.filter(t => t.status !== "Completed"), [filteredTasks]);
       const archivedTasks = useMemo(() => filteredTasks.filter(t => t.status === "Completed"), [filteredTasks]);
 
+      // Global Progress calculation for Dashboard
+      const overallProgressStats = useMemo(() => {
+        if (activeTasks.length === 0) return { totalWeight: 0, completedWeight: 0, percent: 100 };
+        
+        let totalItems = 0;
+        let completedItems = 0;
+
+        activeTasks.forEach(task => {
+          if (task.subtasks && task.subtasks.length > 0) {
+            task.subtasks.forEach(s => {
+              totalItems += 1;
+              if (s.status === "Completed") completedItems += 1;
+            });
+          } else {
+            totalItems += 1;
+            if (task.status === "Completed") completedItems += 1;
+          }
+        });
+
+        const percent = totalItems === 0 ? 0 : Math.round((completedItems / totalItems) * 100);
+        return { totalItems, completedItems, percent };
+      }, [activeTasks]);
+
       const isOverdue = (utcIsoString) => {
         if (!utcIsoString) return false;
         const d = new Date(utcIsoString);
@@ -418,11 +446,13 @@
         return d >= now && d <= limit;
       };
 
-      const followUpItems = useMemo(() => {
-        const items = [];
+      // Follow-up Items grouped by Parent Task forCollapsible UI in Radar
+      const groupedRadarTasks = useMemo(() => {
+        const taskGroupMap = {};
 
         activeTasks.forEach(task => {
           const parentContact = task.leadPhone || task.leadEmail || "No contact info";
+          const items = [];
 
           if (task.softDeadline) {
             items.push({
@@ -464,7 +494,6 @@
 
           if (task.subtasks && task.subtasks.length > 0) {
             task.subtasks.forEach((sub, idx) => {
-              // Exclude completed sub-tasks from follow-up radar
               if (sub.status === "Completed") return;
 
               const subLead = sub.lead || task.leadName || "Unassigned";
@@ -528,15 +557,32 @@
               }
             });
           }
+
+          const filteredItems = items.filter(item => {
+            if (radarTimeframe === "overdue") return item.isOverdue;
+            if (radarTimeframe === "7days") return item.isOverdue || item.isWithin7;
+            if (radarTimeframe === "30days") return item.isOverdue || item.isWithin30;
+            return true;
+          }).sort((a, b) => new Date(a.deadlineDateIso) - new Date(b.deadlineDateIso));
+
+          if (filteredItems.length > 0) {
+            taskGroupMap[task.id] = {
+              task,
+              items: filteredItems,
+              earliestDeadline: filteredItems[0].deadlineDateIso
+            };
+          }
         });
 
-        return items.filter(item => {
-          if (radarTimeframe === "overdue") return item.isOverdue;
-          if (radarTimeframe === "7days") return item.isOverdue || item.isWithin7;
-          if (radarTimeframe === "30days") return item.isOverdue || item.isWithin30;
-          return true;
-        }).sort((a, b) => new Date(a.deadlineDateIso) - new Date(b.deadlineDateIso));
+        return Object.values(taskGroupMap).sort((a, b) => new Date(a.earliestDeadline) - new Date(b.earliestDeadline));
       }, [activeTasks, radarTimeframe]);
+
+      const toggleRadarCollapse = (taskId) => {
+        setCollapsedRadarTasks(prev => ({
+          ...prev,
+          [taskId]: !prev[taskId]
+        }));
+      };
 
       const handleExportJSON = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ portfolios, tasks, firebaseConfig }, null, 2));
@@ -701,6 +747,42 @@
           <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
             {activeTab === "dashboard" && (
               <div className="space-y-6">
+                {/* Global Active Tasks Completion Progress Bar */}
+                <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3 shadow-lg">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-100 flex items-center space-x-2">
+                        <Icons.CheckCircle />
+                        <span>Overall Active Tasks Progress</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Track progress across all current sub-tasks & active task items
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-extrabold text-indigo-400">
+                        {overallProgressStats.percent}%
+                      </span>
+                      <div className="text-[11px] text-slate-400 font-medium">
+                        {overallProgressStats.completedItems} / {overallProgressStats.totalItems} Items Completed
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden border border-slate-700/80 p-0.5">
+                    <div 
+                      className={`h-full transition-all duration-500 rounded-full ${
+                        overallProgressStats.percent === 100 
+                          ? 'bg-emerald-500' 
+                          : overallProgressStats.percent > 40 
+                            ? 'bg-indigo-500' 
+                            : 'bg-amber-500'
+                      }`} 
+                      style={{ width: `${overallProgressStats.percent}%` }}
+                    ></div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
                     <div className="flex justify-between items-center mb-2">
@@ -733,6 +815,7 @@
                   </div>
                 </div>
 
+                {/* Follow-Up Radar Section with Collapsible Sub-tasks */}
                 <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700 pb-3">
                     <div>
@@ -761,45 +844,105 @@
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    {followUpItems.length === 0 ? (
+                  <div className="space-y-4">
+                    {groupedRadarTasks.length === 0 ? (
                       <div className="p-6 text-center text-slate-400 text-sm">No follow-ups found for the selected timeframe.</div>
                     ) : (
-                      followUpItems.map(item => (
-                        <div key={item.id} className="bg-slate-900/70 border border-slate-700/70 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-1">
-                            <div className="flex items-center space-x-2">
-                              <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded border border-indigo-500/30 font-semibold">{item.portfolio}</span>
-                              <span className="text-xs px-2 py-0.5 bg-slate-700 text-slate-300 rounded">{item.itemType}</span>
-                              <h3 className="font-semibold text-slate-200 text-sm">{item.itemTitle}</h3>
-                            </div>
-                            
-                            <div className="text-xs text-slate-400 flex flex-wrap space-x-4 pt-1">
-                              <span><strong className="text-slate-300">Target Person:</strong> <span className="text-indigo-300 font-medium">{item.lead}</span> ({item.contact})</span>
-                              {item.support && <span><strong className="text-slate-300">Support:</strong> {item.support}</span>}
-                              {item.itemType !== "Parent Task" && <span className="text-slate-500">Parent: {item.taskTitle}</span>}
-                            </div>
-                          </div>
+                      groupedRadarTasks.map(group => {
+                        const task = group.task;
+                        const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+                        const stats = getSubtaskCompletionStats(task.subtasks);
+                        const isCollapsed = collapsedRadarTasks[task.id];
 
-                          <div className="flex items-center space-x-3 text-right">
-                            <div>
-                              <div className="text-[10px] uppercase font-bold text-slate-400">{item.deadlineType} Deadline</div>
-                              <div className={`text-xs font-semibold ${item.isOverdue ? 'text-red-400' : 'text-amber-400'}`}>
-                                {formatDeadline(item.deadlineDateIso)} {item.isOverdue && '(OVERDUE)'}
+                        const barColor = stats.percent === 100 
+                          ? 'bg-emerald-500' 
+                          : stats.percent > 33 
+                            ? 'bg-indigo-500' 
+                            : 'bg-amber-500';
+
+                        return (
+                          <div key={task.id} className="bg-slate-900/80 border border-slate-700/80 rounded-xl overflow-hidden">
+                            {/* Main Task Header Card on Follow-Up Radar */}
+                            <div className="p-4 bg-slate-800/90 border-b border-slate-700/70 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                              <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center space-x-2">
+                                  {hasSubtasks && (
+                                    <button 
+                                      onClick={() => toggleRadarCollapse(task.id)}
+                                      className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-200 transition-colors"
+                                    >
+                                      {isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+                                    </button>
+                                  )}
+                                  <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded border border-indigo-500/30 font-semibold">{task.portfolio}</span>
+                                  <h3 className="font-semibold text-slate-100 text-sm">{task.title}</h3>
+                                </div>
+
+                                <div className="text-xs text-slate-400 flex flex-wrap space-x-4 pl-1">
+                                  <span><strong className="text-slate-300">Lead:</strong> <span className="text-indigo-300 font-medium">{task.leadName || 'Unassigned'}</span></span>
+                                  {task.supportName && <span><strong className="text-slate-300">Support:</strong> {task.supportName}</span>}
+                                  <span className="text-slate-400">Status: <strong className="text-indigo-300">{task.status}</strong></span>
+                                </div>
+
+                                {/* Progress Bar on Follow-Up Radar Parent Card */}
+                                {hasSubtasks && (
+                                  <div className="mt-2 bg-slate-900 border border-slate-700/70 p-2 rounded-lg space-y-1 max-w-sm">
+                                    <div className="flex justify-between items-center text-[10px]">
+                                      <span className="font-medium text-slate-400">Sub-task Progress</span>
+                                      <span className="font-bold text-slate-200">{stats.completed} / {stats.total} ({stats.percent}%)</span>
+                                    </div>
+                                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden border border-slate-700">
+                                      <div 
+                                        className={`h-full transition-all duration-300 rounded-full ${barColor}`} 
+                                        style={{ width: `${stats.percent}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center space-x-3">
+                                <button
+                                  onClick={() => {
+                                    setEditingTask(task);
+                                    setForm(task);
+                                    setActiveTab("add");
+                                  }}
+                                  className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-indigo-300 font-semibold transition-colors"
+                                >
+                                  View / Edit Task
+                                </button>
                               </div>
                             </div>
-                            <button
-                              onClick={() => {
-                                const task = tasks.find(t => t.id === item.taskId);
-                                if (task) { setEditingTask(task); setForm(task); setActiveTab("add"); }
-                              }}
-                              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-indigo-400 font-semibold"
-                            >
-                              View Task
-                            </button>
+
+                            {/* Collapsible Follow-up items list under parent task */}
+                            {!isCollapsed && (
+                              <div className="p-3 space-y-2 bg-slate-900/40">
+                                {group.items.map(item => (
+                                  <div key={item.id} className="bg-slate-800/60 border border-slate-700/60 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center space-x-2">
+                                        <span className="px-1.5 py-0.5 bg-slate-700 text-slate-300 rounded text-[10px] font-medium">{item.itemType}</span>
+                                        <span className="font-semibold text-slate-200">{item.itemTitle}</span>
+                                      </div>
+                                      <div className="text-slate-400 text-[11px]">
+                                        Assigned to: <span className="text-slate-300 font-medium">{item.lead}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                      <div className="text-[10px] uppercase font-bold text-slate-400">{item.deadlineType} Deadline</div>
+                                      <div className={`font-semibold ${item.isOverdue ? 'text-red-400' : 'text-amber-400'}`}>
+                                        {formatDeadline(item.deadlineDateIso)} {item.isOverdue && '(OVERDUE)'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
