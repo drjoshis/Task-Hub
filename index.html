@@ -21,7 +21,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
 
     const DEFAULT_PORTFOLIOS = ["CTD", "WHO", "WMA JDN"];
 
@@ -83,6 +83,9 @@
       const [editingTask, setEditingTask] = useState(null);
       const [radarTimeframe, setRadarTimeframe] = useState("all");
 
+      // Ref to prevent circular updates between snapshot reader and state writer
+      const isRemoteUpdate = useRef(false);
+
       const [form, setForm] = useState({
         portfolio: "CTD",
         title: "",
@@ -99,6 +102,7 @@
         subtasks: []
       });
 
+      // Firebase Sync Listener
       useEffect(() => {
         if (!firebaseConfig) {
           setSyncStatus("local");
@@ -114,8 +118,15 @@
 
           const unsubscribe = db.collection("task_manager").doc("app_data")
             .onSnapshot((doc) => {
+              // Ignore local mutations reflected back by snapshot
+              if (doc.metadata.hasPendingWrites) {
+                return;
+              }
+
               if (doc.exists) {
                 const data = doc.data();
+                isRemoteUpdate.current = true;
+                
                 if (data.tasks) {
                   setTasks(data.tasks);
                   localStorage.setItem("tm_tasks", JSON.stringify(data.tasks));
@@ -124,16 +135,23 @@
                   setPortfolios(data.portfolios);
                   localStorage.setItem("tm_portfolios", JSON.stringify(data.portfolios));
                 }
+                
+                setTimeout(() => {
+                  isRemoteUpdate.current = false;
+                }, 100);
               }
+              setIsSyncing(false);
             }, (error) => {
               console.error("Firebase Sync Error:", error);
               setSyncStatus("error");
+              setIsSyncing(false);
             });
 
           return () => unsubscribe();
         } catch (err) {
           console.error("Firebase init failed:", err);
           setSyncStatus("error");
+          setIsSyncing(false);
         }
       }, [firebaseConfig]);
 
@@ -143,8 +161,13 @@
 
       useEffect(() => {
         localStorage.setItem("tm_tasks", JSON.stringify(tasks));
+
+        // Skip writing back to Firebase if this state change came from Firestore itself
+        if (isRemoteUpdate.current) {
+          return;
+        }
         
-        if (firebaseConfig && firebase.apps.length) {
+        if (firebaseConfig && firebase.apps.length && syncStatus === "connected") {
           setIsSyncing(true);
           const db = firebase.firestore();
           db.collection("task_manager").doc("app_data").set({
@@ -157,7 +180,6 @@
         }
       }, [tasks, portfolios]);
 
-      // Factory Reset Logic
       const handleFactoryReset = () => {
         const confirmFirst = confirm("Warning: This will clear all local tasks, portfolios, and configuration. Are you sure?");
         if (!confirmFirst) return;
@@ -542,7 +564,6 @@
                 <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
               </label>
 
-              {/* Reset Cache Button */}
               <button 
                 onClick={handleFactoryReset} 
                 className="flex items-center space-x-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1.5 rounded text-xs transition-colors"
