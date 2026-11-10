@@ -26,8 +26,8 @@
     const DEFAULT_PORTFOLIOS = ["CTD", "WHO", "WMA JDN"];
 
     const DEFAULT_CONTACTS = [
-      { id: "c1", name: "Dr. Shiv", email: "shiv@example.com", phone: "+15550192", notes: "Project Lead" },
-      { id: "c2", name: "Alex Rivera", email: "alex@example.com", phone: "+15550143", notes: "Technical Support" }
+      { id: "c1", name: "Dr. Shiv", email: "shiv@example.com", phone: "+15550192", notes: "Project Lead", trackInHeatmap: true },
+      { id: "c2", name: "Alex Rivera", email: "alex@example.com", phone: "+15550143", notes: "Technical Support", trackInHeatmap: true }
     ];
 
     const TIMEZONES = [
@@ -223,7 +223,8 @@
         name: "",
         email: "",
         phone: "",
-        notes: ""
+        notes: "",
+        trackInHeatmap: true
       });
 
       useEffect(() => {
@@ -409,7 +410,7 @@
           setContacts([...contacts, { ...contactForm, id: "c_" + Date.now().toString() }]);
         }
 
-        setContactForm({ name: "", email: "", phone: "", notes: "" });
+        setContactForm({ name: "", email: "", phone: "", notes: "", trackInHeatmap: true });
       };
 
       const deleteContact = (id) => {
@@ -630,14 +631,17 @@
         });
       }, [portfolios, tasks]);
 
-      // Team Workload Heatmap
+      // Team Workload Heatmap (Option 2 Filtered by trackInHeatmap)
       const teamHeatmap = useMemo(() => {
-        return contacts.map(c => {
-          const cNameLower = (c.name || "").toLowerCase();
-          const assignedLead = activeTasks.filter(t => (t.leadName || "").toLowerCase().includes(cNameLower) || (t.subtasks && t.subtasks.some(s => (s.lead || "").toLowerCase().includes(cNameLower))));
-          const overdueAssigned = assignedLead.filter(t => isOverdue(t.hardDeadline) || (t.subtasks && t.subtasks.some(s => s.lead && s.lead.toLowerCase().includes(cNameLower) && isOverdue(s.hard))));
-          return { contact: c, totalAssigned: assignedLead.length, overdueCount: overdueAssigned.length };
-        }).sort((a, b) => b.totalAssigned - a.totalAssigned);
+        return contacts
+          .filter(c => c.trackInHeatmap !== false)
+          .map(c => {
+            const cNameLower = (c.name || "").toLowerCase();
+            const assignedLead = activeTasks.filter(t => (t.leadName || "").toLowerCase().includes(cNameLower) || (t.subtasks && t.subtasks.some(s => (s.lead || "").toLowerCase().includes(cNameLower))));
+            const overdueAssigned = assignedLead.filter(t => isOverdue(t.hardDeadline) || (t.subtasks && t.subtasks.some(s => s.lead && s.lead.toLowerCase().includes(cNameLower) && isOverdue(s.hard))));
+            return { contact: c, totalAssigned: assignedLead.length, overdueCount: overdueAssigned.length };
+          })
+          .sort((a, b) => b.totalAssigned - a.totalAssigned);
       }, [contacts, activeTasks]);
 
       const groupedRadarTasks = useMemo(() => {
@@ -1092,22 +1096,26 @@
                         <Icons.Users />
                         <span>Team Workload & Accountability Heatmap</span>
                       </h3>
-                      <span className="text-xs text-slate-400">{contacts.length} Contacts Tracked</span>
+                      <span className="text-xs text-slate-400">{teamHeatmap.length} Tracked Contacts</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {teamHeatmap.map(item => (
-                        <div key={item.contact.id} className="bg-slate-900/60 border border-slate-700/70 p-3 rounded-lg flex justify-between items-center text-xs">
-                          <div>
-                            <div className="font-bold text-slate-200">{item.contact.name}</div>
-                            <div className="text-[10px] text-slate-400">{item.contact.notes || 'Personnel'}</div>
+                      {teamHeatmap.length === 0 ? (
+                        <div className="col-span-2 text-center text-xs text-slate-400 py-4">No contacts currently selected for heatmap tracking.</div>
+                      ) : (
+                        teamHeatmap.map(item => (
+                          <div key={item.contact.id} className="bg-slate-900/60 border border-slate-700/70 p-3 rounded-lg flex justify-between items-center text-xs">
+                            <div>
+                              <div className="font-bold text-slate-200">{item.contact.name}</div>
+                              <div className="text-[10px] text-slate-400">{item.contact.notes || 'Personnel'}</div>
+                            </div>
+                            <div className="text-right space-y-0.5">
+                              <div className="font-semibold text-indigo-300">{item.totalAssigned} Active Tasks</div>
+                              {item.overdueCount > 0 && <div className="text-[10px] font-bold text-red-400">{item.overdueCount} Overdue</div>}
+                            </div>
                           </div>
-                          <div className="text-right space-y-0.5">
-                            <div className="font-semibold text-indigo-300">{item.totalAssigned} Active Tasks</div>
-                            {item.overdueCount > 0 && <div className="text-[10px] font-bold text-red-400">{item.overdueCount} Overdue</div>}
-                          </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   </div>
 
@@ -1222,7 +1230,6 @@
                               </div>
 
                               <div className="flex items-center space-x-2">
-                                {/* Quick Contact Reminder Buttons */}
                                 <button
                                   onClick={() => triggerWhatsAppReminder(task.leadName, task.leadPhone, task.title, group.earliestDeadline)}
                                   className="px-2.5 py-1 bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/40 text-emerald-300 rounded text-xs font-semibold flex items-center space-x-1 transition-colors"
@@ -1678,7 +1685,7 @@
               </div>
             )}
 
-            {/* Contacts Directory Tab */}
+            {/* Contacts Directory Tab with Option 2 Integration */}
             {activeTab === "contacts" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <form onSubmit={handleSaveContact} className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-4 h-fit">
@@ -1732,11 +1739,24 @@
                     />
                   </div>
 
+                  {/* Option 2 Checkbox Integration */}
+                  <div className="pt-1">
+                    <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={contactForm.trackInHeatmap !== false} 
+                        onChange={e => setContactForm({ ...contactForm, trackInHeatmap: e.target.checked })} 
+                        className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                      />
+                      <span>Track in Team Workload Heatmap</span>
+                    </label>
+                  </div>
+
                   <div className="flex space-x-2 pt-2">
                     {editingContact && (
                       <button 
                         type="button" 
-                        onClick={() => { setEditingContact(null); setContactForm({ name: "", email: "", phone: "", notes: "" }); }} 
+                        onClick={() => { setEditingContact(null); setContactForm({ name: "", email: "", phone: "", notes: "", trackInHeatmap: true }); }} 
                         className="w-1/2 bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded font-medium"
                       >
                         Cancel
@@ -1772,9 +1792,14 @@
                       filteredContacts.map(c => (
                         <div key={c.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex justify-between items-start space-x-3">
                           <div className="space-y-1.5 flex-1">
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-2 flex-wrap">
                               <h3 className="font-bold text-slate-100 text-sm">{c.name}</h3>
                               {c.notes && <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">{c.notes}</span>}
+                              {c.trackInHeatmap !== false ? (
+                                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1 py-0.5 rounded">Heatmap Active</span>
+                              ) : (
+                                <span className="text-[9px] bg-slate-700 text-slate-400 px-1 py-0.5 rounded">Heatmap Hidden</span>
+                              )}
                             </div>
                             
                             <div className="space-y-1 text-xs text-slate-400">
